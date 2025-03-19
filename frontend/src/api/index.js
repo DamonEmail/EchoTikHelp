@@ -40,8 +40,26 @@ export const createTask = async (data) => {
 };
 
 export const getTaskStatus = async (taskId) => {
-  const response = await api.get(`/status/${taskId}`);
-  return response.data;
+  try {
+    // 如果没有 taskId，直接获取任务列表
+    const url = taskId ? `/status/${taskId}` : "/tasks";
+    const response = await api.get(url);
+    // 确保返回的数据格式正确
+    if (Array.isArray(response.data)) {
+      return response.data;
+    } else if (response.data.result) {
+      return {
+        task_id: response.data.task_id,
+        status: response.data.status,
+        message: response.data.message,
+        result: response.data.result,
+      };
+    }
+    return response.data;
+  } catch (error) {
+    console.error("获取任务状态失败:", error);
+    throw error;
+  }
 };
 
 export const deleteTask = async (taskId) => {
@@ -49,7 +67,23 @@ export const deleteTask = async (taskId) => {
   return response.data;
 };
 
-export const startAnalyze = async (data) => {
-  const response = await api.post("/analyze", data);
-  return response.data;
+export const startAnalyze = async (taskId, strategy = "top50") => {
+  try {
+    console.log("发起分析请求:", { task_id: taskId, strategy }); // 添加请求日志
+    const response = await api.post("/analyze", { task_id: taskId, strategy });
+    return response.data;
+  } catch (error) {
+    console.error("分析请求失败:", error);
+    throw error;
+  }
+};
+
+export const getAnalysisResults = async (taskId) => {
+  try {
+    const response = await api.get(`/analysis/${taskId}`);
+    return response.data;
+  } catch (error) {
+    console.error("获取分析结果失败:", error);
+    throw error;
+  }
 };

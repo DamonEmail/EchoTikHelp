@@ -1,7 +1,7 @@
 <template>
   <el-dialog v-model="dialogVisible" title="新增每日数据" width="500px">
     <el-form ref="formRef" :model="form" label-width="120px">
-      <el-form-item label="Cookie" required>
+      <el-form-item label="Cookie" prop="cookie">
         <el-input
           v-model="form.cookie"
           type="textarea"
@@ -9,11 +9,12 @@
           placeholder="请输入Cookie"
         />
       </el-form-item>
-      <el-form-item label="Authorization" required>
+      <el-form-item label="Authorization" prop="authorization">
         <el-input
           v-model="form.authorization"
-          placeholder="请输入Bearer Token"
-          :prefix-icon="Key"
+          type="textarea"
+          :rows="2"
+          placeholder="请输入Authorization"
         />
       </el-form-item>
       <el-form-item label="商品类别">
@@ -40,15 +41,22 @@
     </el-form>
     <template #footer>
       <span class="dialog-footer">
-        <el-button @click="closeDialog">取消</el-button>
-        <el-button type="primary" @click="handleSubmit"> 确认 </el-button>
+        <el-button @click="handleReset">重置凭证</el-button>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button
+          type="primary"
+          @click="handleConfirm"
+          :loading="isSubmitting"
+        >
+          确认
+        </el-button>
       </span>
     </template>
   </el-dialog>
 </template>
 
 <script setup>
-import { reactive, computed } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { ElMessage } from "element-plus";
 import { Key } from "@element-plus/icons-vue";
 import { createTask } from "../api";
@@ -85,6 +93,9 @@ const categories = [
   { id: "0", name: "其他" },
 ];
 
+const isSubmitting = ref(false);
+const formRef = ref(null);
+
 const props = defineProps({
   modelValue: {
     type: Boolean,
@@ -99,61 +110,101 @@ const dialogVisible = computed({
   set: (value) => emit("update:modelValue", value),
 });
 
-const form = reactive({
-  cookie: "",
-  authorization: "",
+const form = ref({
+  cookie: localStorage.getItem("echotik_cookie") || "",
+  authorization: localStorage.getItem("echotik_auth") || "",
   category_id: "",
   keyword: "",
 });
 
+const rules = {
+  cookie: [{ required: true, message: "请输入Cookie", trigger: "blur" }],
+  authorization: [
+    { required: true, message: "请输入Authorization", trigger: "blur" },
+  ],
+};
+
 const closeDialog = () => {
   emit("update:modelValue", false);
   // 重置表单
-  form.cookie = "";
-  form.authorization = "";
-  form.category_id = "";
-  form.keyword = "";
+  form.value.cookie = "";
+  form.value.authorization = "";
+  form.value.category_id = "";
+  form.value.keyword = "";
 };
 
 const validateForm = () => {
-  if (!form.cookie.trim()) {
+  if (!form.value.cookie.trim()) {
     ElMessage.warning("请输入Cookie");
     return false;
   }
-  if (!form.authorization.trim()) {
+  if (!form.value.authorization.trim()) {
     ElMessage.warning("请输入Authorization");
     return false;
   }
-  if (!form.category_id && !form.keyword) {
+  if (!form.value.category_id && !form.value.keyword) {
     ElMessage.warning("请至少选择商品类别或输入关键词其中之一");
     return false;
   }
   return true;
 };
 
-const handleSubmit = async () => {
-  if (!validateForm()) return;
+const handleConfirm = async () => {
+  if (!formRef.value) return;
 
   try {
-    // 确保authorization格式正确
-    const token = form.authorization.trim();
-    const formattedAuth = token.startsWith("Bearer ")
-      ? token
-      : `Bearer ${token}`;
+    await formRef.value.validate();
+    isSubmitting.value = true;
 
-    const result = await createTask({
-      ...form,
-      authorization: formattedAuth,
+    // 保存凭证到本地存储
+    localStorage.setItem("echotik_cookie", form.value.cookie);
+    localStorage.setItem("echotik_auth", form.value.authorization);
+
+    const response = await createTask({
+      category_id: form.value.category_id || undefined,
+      keyword: form.value.keyword || undefined,
+      cookie: form.value.cookie,
+      authorization: form.value.authorization,
     });
 
-    emit("success", result.task_id);
-    closeDialog();
     ElMessage.success("任务创建成功");
+    emit("update:modelValue", false);
+    emit("success", response);
   } catch (error) {
-    // 错误处理已经在 api 拦截器中统一处理
     console.error("创建任务失败:", error);
+  } finally {
+    isSubmitting.value = false;
   }
 };
+
+const handleReset = () => {
+  // 清除本地存储的凭证
+  localStorage.removeItem("echotik_cookie");
+  localStorage.removeItem("echotik_auth");
+
+  // 清空表单中的凭证字段
+  form.value.cookie = "";
+  form.value.authorization = "";
+
+  ElMessage.success("凭证已重置");
+};
+
+const show = () => {
+  emit("update:modelValue", true);
+  // 重置表单数据，但保留凭证
+  const savedCookie = form.value.cookie;
+  const savedAuth = form.value.authorization;
+  if (formRef.value) {
+    formRef.value.resetFields();
+  }
+  // 恢复凭证
+  form.value.cookie = savedCookie;
+  form.value.authorization = savedAuth;
+};
+
+defineExpose({
+  show,
+});
 </script>
 
 <style lang="less" scoped>

@@ -8,19 +8,24 @@
           active-text="自动刷新"
           :disabled="!hasRunningTasks"
         />
-        <el-button
-          type="primary"
-          @click="handleRefresh"
-          :loading="isRefreshing"
-          :disabled="isRefreshing"
-        >
+        <el-button type="primary" @click="handleRefresh" :icon="Refresh">
           刷新
         </el-button>
       </div>
     </div>
 
     <el-table :data="tasks" style="width: 100%" v-loading="isRefreshing">
-      <el-table-column prop="task_id" label="任务ID" width="200" />
+      <el-table-column prop="task_id" label="任务ID" width="200">
+        <template #default="{ row }">
+          <el-link
+            type="primary"
+            @click="handleRowClick(row)"
+            :underline="false"
+          >
+            {{ row.task_id }}
+          </el-link>
+        </template>
+      </el-table-column>
       <el-table-column prop="status" label="状态" width="100">
         <template #default="{ row }">
           <el-tag :type="getStatusType(row.status)">
@@ -34,24 +39,17 @@
           <div class="file-list">
             <template v-if="row.result?.file_name">
               <el-link type="primary" @click="handleDownload(row, 'raw')">
-                <el-tooltip
-                  :content="row.result.file_name"
-                  placement="top"
-                  :show-after="500"
-                >
+                <el-tooltip :content="row.result.file_name" placement="top">
                   <span class="file-name">{{
                     getShortFileName(row.result.file_name)
                   }}</span>
                 </el-tooltip>
+                <el-tag size="small" effect="plain">原始数据</el-tag>
               </el-link>
             </template>
             <template v-if="row.result?.analysis_file">
               <el-link type="success" @click="handleDownload(row, 'analysis')">
-                <el-tooltip
-                  :content="row.result.analysis_file"
-                  placement="top"
-                  :show-after="500"
-                >
+                <el-tooltip :content="row.result.analysis_file" placement="top">
                   <span class="file-name">{{
                     getShortFileName(row.result.analysis_file)
                   }}</span>
@@ -68,13 +66,21 @@
         <template #default="{ row }">
           <div class="action-buttons">
             <el-button
-              v-if="row.status === 'completed'"
+              v-if="row.status !== 'analyzing' && row.result?.file_path"
               type="primary"
               size="small"
               :icon="DataAnalysis"
               circle
               plain
               @click="handleAnalyzeClick(row)"
+            />
+            <el-button
+              v-else-if="row.status === 'analyzing'"
+              type="warning"
+              size="small"
+              :loading="true"
+              circle
+              plain
             />
             <el-popconfirm
               :title="`确定要删除此任务吗？${
@@ -97,6 +103,13 @@
       </el-table-column>
     </el-table>
 
+    <analysis-results
+      v-if="selectedTask && selectedTask.result?.analysis_json"
+      :task-id="selectedTask.task_id"
+      :visible="!!selectedTask"
+      @close="selectedTask = null"
+    />
+
     <analyze-dialog
       v-model="showAnalyzeDialog"
       :task-id="currentTask?.task_id"
@@ -107,17 +120,15 @@
 </template>
 
 <script setup>
-import { ref, computed, onUnmounted, watch } from "vue";
-import { getTaskStatus, deleteTask } from "../api";
+import { ref, computed, onUnmounted, watch, onMounted } from "vue";
+import { getTaskStatus, deleteTask, startAnalyze } from "../api";
 import { ElMessage } from "element-plus";
-import { Delete, DataAnalysis } from "@element-plus/icons-vue";
+import { Delete, DataAnalysis, Refresh } from "@element-plus/icons-vue";
 import AnalyzeDialog from "./AnalyzeDialog.vue";
+import AnalysisResults from "./AnalysisResults.vue";
 
 const props = defineProps({
-  tasks: {
-    type: Array,
-    required: true,
-  },
+  tasks: Array,
 });
 
 const emit = defineEmits(["update:tasks"]);
@@ -128,6 +139,7 @@ let timer = null;
 
 const showAnalyzeDialog = ref(false);
 const currentTask = ref(null);
+const selectedTask = ref(null);
 
 // 计算是否有正在运行的任务
 const hasRunningTasks = computed(() => {
@@ -145,80 +157,67 @@ watch(hasRunningTasks, (newValue) => {
 });
 
 const handleRefresh = async () => {
-  if (isRefreshing.value) return;
-
+  console.log("Refreshing tasks...");
   try {
     isRefreshing.value = true;
-    const updatedTasks = await Promise.all(
-      props.tasks.map(async (task) => {
-        // 检查需要更新状态的任务
-        if (["pending", "running", "analyzing"].includes(task.status)) {
-          try {
-            return await getTaskStatus(task.task_id);
-          } catch (error) {
-            console.error(`获取任务 ${task.task_id} 状态失败:`, error);
-            return task;
-          }
-        }
-        return task;
-      })
-    );
+    const response = await getTaskStatus();
+    console.log("API Response:", response);
 
-    // 检查是否有状态变化
-    const hasChanges = updatedTasks.some((newTask, index) => {
-      const oldTask = props.tasks[index];
-      return (
-        oldTask.status !== newTask.status ||
-        oldTask.message !== newTask.message ||
-        JSON.stringify(oldTask.result) !== JSON.stringify(newTask.result)
-      );
-    });
-
-    if (hasChanges) {
-      emit("update:tasks", updatedTasks);
+    if (Array.isArray(response)) {
+      emit("update:tasks", response);
 
       // 检查分析完成的任务
-      updatedTasks.forEach((task, index) => {
-        const oldTask = props.tasks[index];
-        if (
-          oldTask.status === "analyzing" &&
-          task.status === "completed" &&
-          task.result?.analysis_file
-        ) {
-          ElMessage.success(
-            `任务 ${getShortFileName(task.result.file_name)} 分析完成`
-          );
+      response.forEach((task) => {
+        console.log("Processing task:", task); // 添加调试日志
+        if (task.status === "completed" && task.result?.analysis_file) {
+          const oldTask = props.tasks.find((t) => t.task_id === task.task_id);
+          if (oldTask?.status === "analyzing") {
+            ElMessage.success(
+              `任务 ${getShortFileName(task.result.file_name)} 分析完成`
+            );
+          }
         }
       });
     }
   } catch (error) {
     console.error("刷新任务状态失败:", error);
-    ElMessage.error("刷新任务状态失败，请稍后重试");
+    throw error;
   } finally {
     isRefreshing.value = false;
   }
 };
 
 const getStatusType = (status) => {
-  const map = {
-    pending: "info",
-    running: "warning",
-    analyzing: "warning",
-    completed: "success",
-    failed: "danger",
-  };
-  return map[status] || "info";
+  switch (status) {
+    case "pending":
+      return "info";
+    case "running":
+    case "analyzing": // 添加分析中状态
+      return "warning";
+    case "completed":
+      return "success";
+    case "failed":
+      return "danger";
+    default:
+      return "info";
+  }
 };
 
 const getStatusText = (status) => {
-  const map = {
-    pending: "等待中",
-    running: "进行中",
-    analyzing: "分析中",
-    completed: "已完成",
-    failed: "失败",
-  };
-  return map[status] || status;
+  switch (status) {
+    case "pending":
+      return "等待中";
+    case "running":
+      return "运行中";
+    case "analyzing": // 添加分析中状态
+      return "分析中";
+    case "completed":
+      return "已完成";
+    case "failed":
+      return "失败";
+    default:
+      return "未知";
+  }
 };
 
 const handleDownload = (task, type = "raw") => {
@@ -233,19 +232,29 @@ const handleDownload = (task, type = "raw") => {
 
 const handleDelete = async (task) => {
   try {
+    isRefreshing.value = true;
     await deleteTask(task.task_id);
     emit(
       "update:tasks",
       props.tasks.filter((t) => t.task_id !== task.task_id)
     );
     ElMessage.success("任务已删除");
+    if (selectedTask.value?.task_id === task.task_id) {
+      selectedTask.value = null;
+    }
   } catch (error) {
     console.error("删除任务失败:", error);
-    ElMessage.error("删除任务失败，请稍后重试");
+    ElMessage.error(error.response?.data?.detail || "删除任务失败，请稍后重试");
+  } finally {
+    isRefreshing.value = false;
   }
 };
 
 const handleAnalyzeClick = (task) => {
+  if (task.status === "analyzing") {
+    ElMessage.warning("任务正在分析中，请稍后...");
+    return;
+  }
   currentTask.value = task;
   showAnalyzeDialog.value = true;
 };
@@ -264,6 +273,16 @@ watch(autoRefresh, (newValue) => {
   }
 });
 
+onMounted(async () => {
+  try {
+    console.log("初始化加载任务列表...");
+    await handleRefresh();
+  } catch (error) {
+    console.error("初始化加载失败:", error);
+    ElMessage.error("加载任务列表失败，请刷新页面重试");
+  }
+});
+
 onUnmounted(() => {
   if (timer) {
     clearInterval(timer);
@@ -278,6 +297,40 @@ const getShortFileName = (fileName) => {
     ? fileName.slice(0, maxLength - 3) + "..."
     : fileName;
 };
+
+// 处理行点击
+const handleRowClick = (row) => {
+  // 只有已完成且有分析结果的任务才能查看
+  if (row.result?.analysis_json) {
+    // 如果点击的是当前选中的任务，则关闭展示
+    if (selectedTask.value?.task_id === row.task_id) {
+      selectedTask.value = null;
+      return;
+    }
+    selectedTask.value = row;
+  } else if (row.result?.file_path) {
+    ElMessage.info("该任务尚未进行分析，请先点击分析按钮");
+  } else {
+    ElMessage.info(`任务${getStatusText(row.status)}，暂无分析结果`);
+  }
+};
+
+// 监听分析完成事件
+watch(
+  () => props.tasks,
+  (newTasks) => {
+    // 如果当前有选中的任务，更新其数据
+    if (selectedTask.value) {
+      const updatedTask = newTasks.find(
+        (t) => t.task_id === selectedTask.value.task_id
+      );
+      if (updatedTask) {
+        selectedTask.value = updatedTask;
+      }
+    }
+  },
+  { deep: true }
+);
 </script>
 
 <style lang="less" scoped>
@@ -325,6 +378,10 @@ const getShortFileName = (fileName) => {
 
     .el-link {
       font-size: 13px;
+
+      &:hover {
+        text-decoration: underline;
+      }
     }
   }
 

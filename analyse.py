@@ -22,6 +22,7 @@ import base64
 import time
 from bs4 import BeautifulSoup
 import hashlib
+from urllib.parse import urlencode
 
 class ImageMatcher:
     def __init__(self):
@@ -83,23 +84,70 @@ class ImageMatcher:
 class Alibaba1688Searcher:
     def __init__(self):
         self.session = requests.Session()
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'zh-CN,zh;q=0.9',
-            'Origin': 'https://s.1688.com',
-            'Referer': 'https://s.1688.com/'
-        }
+        self.base_url = "https://re.1688.com"
+        self.api_url = "https://h5api.m.1688.com/h5"
         self.driver = None
+        self.m_h5_tk = None  # 存储token
+        self.headers = None  # 存储请求头
 
     def init_browser(self):
-        """初始化浏览器"""
+        """初始化浏览器和必要的参数"""
+        # 初始化浏览器
         options = webdriver.ChromeOptions()
-        options.add_argument('--headless')  # 无头模式
+        options.add_argument('--headless')
         options.add_argument('--disable-gpu')
         options.add_argument('--no-sandbox')
-        options.add_argument(f'user-agent={self.headers["User-Agent"]}')
         self.driver = webdriver.Chrome(options=options)
+        
+        # 初始化token和请求头
+        self._init_token_and_headers()
+
+    def _init_token_and_headers(self):
+        """初始化token和请求头（只需执行一次）"""
+        try:
+            print("\n1. 初始化token和请求头...")
+            
+            # 访问1688识图页面
+            self.driver.get(self.base_url)
+            
+            # 等待页面加载完成
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            
+            # 获取cookies和localStorage
+            cookies = self.driver.get_cookies()
+            token = self.driver.execute_script('return localStorage.getItem("_m_h5_tk");')
+            
+            # 设置cookies
+            for cookie in cookies:
+                self.session.cookies.set(cookie['name'], cookie['value'])
+                if cookie['name'] == '_m_h5_tk':
+                    self.m_h5_tk = cookie['value'].split('_')[0]
+            
+            # 设置通用请求头
+            self.headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+                'Accept': 'application/json',
+                'Accept-Language': 'zh-CN,zh;q=0.9',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Origin': 'https://re.1688.com',
+                'Referer': 'https://re.1688.com/',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+                'sec-ch-ua': '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'same-site'
+            }
+            
+            print("✓ token和请求头初始化成功")
+            
+        except Exception as e:
+            print(f"× 初始化token和请求头失败: {str(e)}")
+            raise
 
     def close_browser(self):
         """关闭浏览器"""
@@ -202,40 +250,56 @@ class Alibaba1688Searcher:
         except:
             return None
 
+    def download_image(self, url: str) -> bytes:
+        """下载图片"""
+        max_retries = 3
+        retry_delay = 2  # 初始重试延迟（秒）
+        
+        print(f"\n开始处理图片: {url}")
+        
+        for attempt in range(max_retries):
+            try:
+                print(f"尝试下载图片 (第 {attempt+1}/{max_retries} 次)...")
+                print(f"图片URL: {url}")
+                
+                response = requests.get(url, timeout=10)
+                if response.status_code == 200:
+                    return response.content
+                else:
+                    print(f"下载图片失败: HTTP {response.status_code}")
+                    
+                    # 尝试替代URL
+                    if 'cdn.echotik.shop' in url:
+                        alt_url = url.replace('cdn.echotik.shop', 'echotik.live/storage')
+                        print(f"尝试替代URL: {alt_url}")
+                        alt_response = requests.get(alt_url, timeout=10)
+                        if alt_response.status_code == 200:
+                            return alt_response.content
+                
+                if attempt < max_retries - 1:
+                    wait_time = retry_delay * (attempt + 1)
+                    print(f"等待 {wait_time} 秒后重试...")
+                    time.sleep(wait_time)
+                
+            except Exception as e:
+                print(f"下载出错: {str(e)}")
+                if attempt < max_retries - 1:
+                    wait_time = retry_delay * (attempt + 1)
+                    print(f"等待 {wait_time} 秒后重试...")
+                    time.sleep(wait_time)
+        
+        # 所有尝试都失败
+        raise Exception(f"无法下载图片: {url}")
+
     def upload_image(self, image_url: str) -> dict:
         """上传图片到1688"""
         try:
-            # 1. 先访问1688识图页面获取必要的token
-            print("1. 获取初始token...")
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-                'Accept-Language': 'zh-CN,zh;q=0.9',
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache',
-                'Upgrade-Insecure-Requests': '1',
-                'sec-ch-ua': '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
-                'sec-ch-ua-mobile': '?0',
-                'sec-ch-ua-platform': '"Windows"',
-                'sec-fetch-dest': 'document',
-                'sec-fetch-mode': 'navigate',
-                'sec-fetch-site': 'none',
-                'sec-fetch-user': '?1'
-            }
-            
-            # 使用session访问页面
-            response = self.session.get(
-                'https://re.1688.com/',
-                headers=headers
-            )
-            
-            # 打印所有cookies查看
-            print("\nCookies:")
-            for cookie in self.session.cookies:
-                print(f"{cookie.name}: {cookie.value}")
+            # 1. 确保已初始化
+            if not self.m_h5_tk or not self.headers:
+                self._init_token_and_headers()
             
             # 2. 准备上传数据
-            print("\n2. 准备上传数据...")
+            print(f"\n开始处理图片: {image_url}")
             timestamp = str(int(time.time() * 1000))
             image_base64 = self._image_to_base64(image_url)
             if not image_base64:
@@ -247,61 +311,35 @@ class Alibaba1688Searcher:
                 "appKey": "pvvljh1grxcmaay2vgpe9nb68gg9ueg2"
             }
             
-            # 3. 获取token和计算签名
-            cookies = self.session.cookies
-            m_h5_tk = None
-            for cookie in cookies:
-                if cookie.name == '_m_h5_tk':
-                    m_h5_tk = cookie.value.split('_')[0]
-                    break
-                
-            if not m_h5_tk:
-                # 如果没有获取到token，尝试发送一个预请求
-                print("\n未找到token，尝试预请求...")
-                pre_response = self.session.get(
-                    'https://h5api.m.1688.com/h5/mtop.1688.imageservice.putimage/1.0/',
-                    headers=headers
-                )
-                # 再次检查cookies
-                for cookie in self.session.cookies:
-                    if cookie.name == '_m_h5_tk':
-                        m_h5_tk = cookie.value.split('_')[0]
-                        break
-                    
-            if not m_h5_tk:
-                raise Exception("获取token失败")
-            
-            print(f"\n获取到token: {m_h5_tk}")
-
-            # 计算签名
-            sign_content = f"{m_h5_tk}&{timestamp}&12574478&{json.dumps(data)}"
+            # 3. 计算签名
+            sign_content = f"{self.m_h5_tk}&{timestamp}&12574478&{json.dumps(data)}"
             sign = hashlib.md5(sign_content.encode('utf-8')).hexdigest()
-
-            # 4. 发送上传请求
-            print("\n3. 发送上传请求...")
-            upload_url = (
-                "https://h5api.m.1688.com/h5/mtop.1688.imageservice.putimage/1.0/?"
-                f"jsv=2.6.1&appKey=12574478&t={timestamp}&"
-                f"sign={sign}&api=mtop.1688.imageService.putImage&"
-                "type=originaljson"
-            )
-
-            upload_headers = {
-                **headers,
-                'Origin': 'https://re.1688.com',
-                'Referer': 'https://re.1688.com/',
-                'Content-Type': 'application/x-www-form-urlencoded',
+            
+            # 4. 构建请求参数
+            params = {
+                'jsv': '2.6.1',
+                'appKey': '12574478',
+                't': timestamp,
+                'sign': sign,
+                'api': 'mtop.1688.imageService.putImage',
+                'v': '1.0',
+                'type': 'originaljson',
+                'dataType': 'jsonp',
+                'timeout': '20000',
+                'ignoreLogin': 'true',
+                'prefix': 'h5api',
+                'ecode': '0',
+                'jsonpIncPrefix': 'search1688'
             }
-
+            
+            # 5. 发送请求
+            upload_url = f"{self.api_url}/mtop.1688.imageservice.putimage/1.0/?{urlencode(params)}"
+            
             response = self.session.post(
                 upload_url,
-                data={"data": json.dumps(data)},
-                headers=upload_headers
+                data={'data': json.dumps(data)},
+                headers=self.headers
             )
-
-            print(f"\n响应状态码: {response.status_code}")
-            print(f"响应头: {dict(response.headers)}")
-            print(f"响应内容: {response.text[:500]}")
 
             if response.status_code == 200:
                 try:
@@ -317,7 +355,7 @@ class Alibaba1688Searcher:
 
         except Exception as e:
             print(f"\n上传图片时出错: {str(e)}")
-            raise
+            raise  # 向上传递错误
 
     def search_similar_products(self, image_id: str) -> List[Dict]:
         """搜索相似商品"""
@@ -394,7 +432,8 @@ class Alibaba1688Searcher:
                 print("× 图片上传失败，终止搜索")
                 raise Exception("图片上传失败")
             
-            image_id = upload_result.get("imageId")
+            # 从data字段中获取imageId
+            image_id = upload_result.get("data", {}).get("imageId")
             if not image_id:
                 print("× 未获取到imageId，终止搜索")
                 raise Exception("未获取到imageId")
@@ -443,19 +482,10 @@ class Alibaba1688Searcher:
                     
                     if offers and len(offers) > 0:
                         print(f"✓ 成功找到 {len(offers)} 个商品元素")
-                        # 打印第一个商品的HTML结构
-                        print("\n第一个商品的HTML结构:")
-                        print(offers[0].get_attribute('outerHTML'))
                         break
-                        
-                    print("× 未找到商品元素，准备重试")
-                    
-                    if attempt == max_retries - 1:
-                        print("\n保存页面源码以供调试...")
-                        with open('page_source.html', 'w', encoding='utf-8') as f:
-                            f.write(self.driver.page_source)
-                        print("页面源码已保存到 page_source.html")
-                    
+                    else:
+                        print("× 未找到商品元素，准备重试")
+                
                 except Exception as e:
                     print(f"× 加载失败: {str(e)}")
                     if attempt == max_retries - 1:
@@ -465,11 +495,11 @@ class Alibaba1688Searcher:
             print("\n7. 开始解析商品数据...")
             products = []
             
+            print(f"准备解析 {len(offers[:10])} 个商品")
             for i, offer in enumerate(offers[:10], 1):
                 try:
                     print(f"\n解析第 {i} 个商品:")
                     
-                    print("- 获取商品链接")
                     # 找到所有链接，选择第一个包含详情页URL的链接
                     links = offer.find_elements(By.TAG_NAME, "a")
                     product_url = None
@@ -485,13 +515,10 @@ class Alibaba1688Searcher:
                     print(f"  链接: {product_url}")
                     
                     print("- 获取商品图片")
-                    # 在.img-container下找到.img元素
                     img_div = offer.find_element(By.CSS_SELECTOR, ".img-container .img")
                     style = img_div.get_attribute('style')
                     image_url = ''
                     if 'url(' in style:
-                        # 使用更精确的正则表达式提取URL
-                        import re
                         match = re.search(r'url\(["\']?(.*?)["\']?\)', style)
                         if match:
                             image_url = match.group(1)
@@ -516,9 +543,13 @@ class Alibaba1688Searcher:
                     
                 except Exception as e:
                     print(f"× 解析商品数据时出错: {str(e)}")
+                    import traceback
+                    print(traceback.format_exc())
                     continue
             
             print(f"\n=== 搜索完成，共解析 {len(products)} 个商品 ===")
+            if len(products) == 0:
+                print("警告：未成功解析任何商品！")
             return products
             
         except Exception as e:
@@ -530,8 +561,13 @@ class Alibaba1688Searcher:
             return []
 
 class DataAnalyzer:
-    def __init__(self):
-        self.data_dir = 'data'
+    def __init__(self, data_dir: str = 'data'):
+        """初始化数据分析器
+        
+        Args:
+            data_dir: 数据文件目录，默认为 'data'
+        """
+        self.data_dir = data_dir
         self.image_dir = 'product_images'  # 添加图片目录
         os.makedirs(self.image_dir, exist_ok=True)
         self.image_matcher = ImageMatcher()
@@ -539,16 +575,30 @@ class DataAnalyzer:
         
     def _load_latest_data(self) -> List[Dict]:
         """加载最新的数据文件"""
-        # 获取最新的数据文件
-        data_files = [f for f in os.listdir(self.data_dir) if f.startswith('products_cat600001_')]
-        if not data_files:
-            raise FileNotFoundError("没有找到数据文件")
+        try:
+            # 获取所有products开头的json文件
+            data_files = [
+                f for f in os.listdir(self.data_dir) 
+                if f.startswith('products_') and f.endswith('.json')
+            ]
             
-        latest_file = max(data_files)
-        file_path = os.path.join(self.data_dir, latest_file)
-        
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            if not data_files:
+                raise FileNotFoundError("没有找到数据文件")
+            
+            # 按文件名排序，获取最新的文件
+            latest_file = max(data_files)
+            file_path = os.path.join(self.data_dir, latest_file)
+            
+            print(f"加载数据文件: {latest_file}")
+            
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                print(f"成功加载 {len(data)} 条商品数据")
+                return data
+            
+        except Exception as e:
+            print(f"加载数据文件时出错: {str(e)}")
+            raise
     
     def _convert_price(self, price_str: str) -> float:
         """将价格字符串转换为数字"""
@@ -1139,9 +1189,6 @@ def test_single_product():
         matcher.close_browser()
 
 def main():
-    """处理TOP50数据的主函数"""
-    print("\n=== 开始处理数据 ===")
-    
     try:
         # 1. 初始化数据分析器
         analyzer = DataAnalyzer()
@@ -1149,22 +1196,23 @@ def main():
         # 2. 分析并筛选TOP50商品
         print("\n1. 开始分析商品数据...")
         top50_results = analyzer.analyze_products(
-            price_range=(10, 1000),    # 价格范围
-            sales_weight=0.6,          # 销量得分权重
-            influencer_weight=0.4,     # 达人数量得分权重
-            top_n=50                   # 返回前50个结果
+            price_range=(10, 1000),
+            sales_weight=0.6,
+            influencer_weight=0.4,
+            top_n=50
         )
         
         if not top50_results:
             print("未找到符合条件的商品")
             return
             
+        print(f"✓ 找到 {len(top50_results)} 个符合条件的商品")
+        
+        # 3. 初始化匹配器并开始1688匹配
         print(f"\n2. 开始1688商品匹配...")
-        # 3. 初始化匹配器
         matcher = ImageMatcher()
         
         try:
-            # 初始化浏览器
             matcher.init_browser()
             
             # 4. 创建Excel工作簿
@@ -1173,97 +1221,305 @@ def main():
             ws1.title = "方案一结果"
             ws2 = wb.create_sheet("方案二结果")
             
-            # 设置列宽
-            for ws in [ws1, ws2]:
-                for col in range(1, 20):
-                    ws.column_dimensions[get_column_letter(col)].width = 15
-            
-            # 定义表头
-            headers = [
-                '商品ID', '商品名称', '类别', '平均价格', '总销量',
-                '达人数量', '商品评分', '商品图片',
-                '1688商品1', '1688链接1',
-                '1688商品2', '1688链接2',
-                '1688商品3', '1688链接3'
-            ]
-            
-            # 写入表头
-            for ws in [ws1, ws2]:
-                for col, header in enumerate(headers, 1):
-                    ws.cell(1, col, header)
-                    ws.cell(1, col).font = Font(bold=True)
-            
             # 5. 处理每个TOP50商品
             valid_products = []  # 存储方案二的有效商品
+            processed_count = 0  # 记录成功处理的商品数
             
             for row, product in enumerate(top50_results, 2):
-                print(f"\n处理第 {row-1}/50 个商品: {product['product_name']}")
-                
-                # 搜索1688商品
-                results = matcher.search_1688_by_image(product['cover_url'])
-                
-                # 方案一：直接保存前3个结果
-                scheme1_results = results[:3]
-                
-                # 写入基础数据（两个表都写入）
-                for ws in [ws1, ws2]:
-                    ws.cell(row, 1, product['product_id'])
-                    ws.cell(row, 2, product['product_name'])
-                    ws.cell(row, 3, product.get('category', ''))
-                    ws.cell(row, 4, product.get('avg_price', ''))
-                    ws.cell(row, 5, product.get('total_sale_nd_cnt', ''))
-                    ws.cell(row, 6, product.get('influencers_count', ''))
-                    ws.cell(row, 7, product.get('product_rating', ''))
+                try:
+                    print(f"\n{'='*50}")
+                    print(f"处理第 {row-1}/{len(top50_results)} 个商品: {product['product_name']}")
+                    print(f"商品URL: {product['cover_url']}")
                     
-                    # 插入商品原图
-                    _insert_image_to_cell(ws, row, 8, product['cover_url'])
-                
-                # 方案一：写入所有结果
-                for i, result in enumerate(scheme1_results, 1):
-                    img_col = 8 + i*2 - 1
-                    link_col = img_col + 1
-                    _insert_image_to_cell(ws1, row, img_col, result['image_url'])
-                    ws1.cell(row, link_col, result['product_url'])
-                
-                # 方案二：计算相似度
-                similar_products = []
-                for result in results[:10]:
-                    similarity = matcher.compare_images(
-                        product['cover_url'],
-                        result['image_url']
-                    )
-                    if similarity >= matcher.similarity_threshold:
-                        similar_products.append({**result, 'similarity': similarity})
-                
-                # 如果有两个以上高相似度商品，写入方案二表格
-                if len(similar_products) >= 2:
-                    similar_products.sort(key=lambda x: x['similarity'], reverse=True)
-                    for i, result in enumerate(similar_products[:3], 1):
-                        img_col = 8 + i*2 - 1
-                        link_col = img_col + 1
-                        _insert_image_to_cell(ws2, row, img_col, result['image_url'])
-                        ws2.cell(row, link_col, 
-                            f"相似度: {result['similarity']:.4f}\n"
-                            f"链接: {result['product_url']}")
-                    valid_products.append(product)
+                    # 搜索1688商品
+                    try:
+                        results = matcher.search_1688_by_image(product['cover_url'])
+                        if not results:
+                            print(f"× 未找到匹配商品，跳过")
+                            continue
+                            
+                        print(f"✓ 找到 {len(results)} 个匹配商品")
+                        processed_count += 1
+                        
+                        # 写入基础数据（两个表都写入）
+                        for ws in [ws1, ws2]:
+                            ws.cell(row, 1, product['product_id'])
+                            ws.cell(row, 2, product['product_name'])
+                            ws.cell(row, 3, product.get('category', ''))
+                            ws.cell(row, 4, product.get('avg_price', ''))
+                            ws.cell(row, 5, product.get('total_sale_nd_cnt', ''))
+                            ws.cell(row, 6, product.get('influencers_count', ''))
+                            ws.cell(row, 7, product.get('product_rating', ''))
+                            
+                            # 插入商品原图
+                            _insert_image_to_cell(ws, row, 8, product['cover_url'])
+                        
+                        # 方案一：写入前3个结果
+                        scheme1_results = results[:3]
+                        for i, result in enumerate(scheme1_results, 1):
+                            img_col = 8 + i*2 - 1
+                            link_col = img_col + 1
+                            _insert_image_to_cell(ws1, row, img_col, result['image_url'])
+                            ws1.cell(row, link_col, result['product_url'])
+                        
+                        # 方案二：计算相似度
+                        similar_products = []
+                        for result in results[:10]:
+                            similarity = matcher.compare_images(
+                                product['cover_url'],
+                                result['image_url']
+                            )
+                            if similarity >= matcher.similarity_threshold:
+                                similar_products.append({**result, 'similarity': similarity})
+                        
+                        # 如果有两个以上高相似度商品，写入方案二表格
+                        if len(similar_products) >= 2:
+                            similar_products.sort(key=lambda x: x['similarity'], reverse=True)
+                            for i, result in enumerate(similar_products[:3], 1):
+                                img_col = 8 + i*2 - 1
+                                link_col = img_col + 1
+                                _insert_image_to_cell(ws2, row, img_col, result['image_url'])
+                                ws2.cell(row, link_col, 
+                                    f"相似度: {result['similarity']:.4f}\n"
+                                    f"链接: {result['product_url']}")
+                            valid_products.append(product)
+                        
+                        # 每处理完一个商品，打印进度
+                        print(f"\n当前进度: {row-1}/{len(top50_results)} 完成")
+                        
+                        # 每处理完一个商品暂停一下，避免请求过快
+                        time.sleep(2)
+                        
+                    except Exception as e:
+                        print(f"× 搜索商品时出错: {str(e)}")
+                        print("跳过当前商品，继续处理下一个")
+                        continue
+                    
+                except Exception as e:
+                    print(f"× 处理商品时出错: {str(e)}")
+                    print("继续处理下一个商品")
+                    continue
             
-            # 6. 保存Excel文件
+            # 6. 保存最终Excel文件
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             excel_file = f'top50_analysis_{timestamp}.xlsx'
             wb.save(excel_file)
+            
             print(f"\n分析完成！")
-            print(f"方案一：保存了所有{len(top50_results)}个商品的匹配结果")
-            print(f"方案二：找到{len(valid_products)}个有效商品")
+            print(f"共处理 {processed_count}/{len(top50_results)} 个商品")
+            print(f"方案一：保存了所有处理成功的商品匹配结果")
+            print(f"方案二：找到 {len(valid_products)} 个有效商品")
             print(f"Excel报告已生成: {excel_file}")
             
+            return excel_file
+            
         finally:
-            # 确保浏览器被关闭
             matcher.close_browser()
             
     except Exception as e:
         print(f"\n处理过程中出现错误: {str(e)}")
         import traceback
         print(traceback.format_exc())
+
+def analyze_product_data(data_file: str, strategy: str = 'all') -> tuple:
+    """分析商品数据并生成报告"""
+    try:
+        print(f"\n=== 开始分析商品数据 ===")
+        print(f"数据文件: {data_file}")
+        print(f"分析策略: {strategy}")
+        
+        # 1. 初始化数据分析器
+        data_dir = os.path.dirname(data_file) if os.path.dirname(data_file) else 'data'
+        analyzer = DataAnalyzer(data_dir=data_dir)
+        
+        # 2. 分析并筛选TOP50商品
+        print("\n1. 开始分析商品数据...")
+        top50_results = analyzer.analyze_products(
+            price_range=(10, 1000),
+            sales_weight=0.6,
+            influencer_weight=0.4,
+            top_n=50
+        )
+        
+        if not top50_results:
+            raise Exception("未找到符合条件的商品")
+            
+        print(f"✓ 找到 {len(top50_results)} 个符合条件的商品")
+        
+        # 测试模式：限制处理5条数据
+        test_mode = False  # 设置为 False 可以处理全部数据
+        if test_mode:
+            print("\n⚠️ 测试模式：只处理前5条数据")
+            top50_results = top50_results[:5]
+        
+        # 3. 初始化匹配器并开始1688匹配
+        print(f"\n2. 开始1688商品匹配...")
+        matcher = ImageMatcher()
+        
+        # 创建结果JSON数据结构
+        analysis_results = {
+            "products": [],
+            "summary": {
+                "total_products": len(top50_results),
+                "processed_count": 0,
+                "scheme1_count": 0,
+                "scheme2_count": 0
+            }
+        }
+        
+        try:
+            matcher.init_browser()
+            
+            # 4. 创建Excel工作簿
+            wb = Workbook()
+            ws1 = wb.active
+            ws1.title = "方案一结果"
+            ws2 = wb.create_sheet("方案二结果")
+            
+            # 5. 处理每个商品
+            valid_products = []
+            processed_count = 0
+            
+            for row, product in enumerate(top50_results, 2):
+                try:
+                    print(f"\n{'='*50}")
+                    print(f"处理第 {row-1}/{len(top50_results)} 个商品: {product['product_name']}")
+                    print(f"商品URL: {product['cover_url']}")
+                    
+                    # 创建当前商品的结果对象
+                    product_result = {
+                        "product_id": product['product_id'],
+                        "product_name": product['product_name'],
+                        "cover_url": product['cover_url'],
+                        "category": product.get('category', ''),
+                        "avg_price": product.get('avg_price', ''),
+                        "total_sale_nd_cnt": product.get('total_sale_nd_cnt', ''),
+                        "influencers_count": product.get('influencers_count', ''),
+                        "product_rating": product.get('product_rating', ''),
+                        "matches_1": [],  # 方案一结果
+                        "matches_2": []   # 方案二结果
+                    }
+                    
+                    # 搜索1688商品
+                    try:
+                        results = matcher.search_1688_by_image(product['cover_url'])
+                        if not results:
+                            print(f"× 未找到匹配商品，跳过")
+                            continue
+                            
+                        print(f"✓ 找到 {len(results)} 个匹配商品")
+                        processed_count += 1
+                        analysis_results["summary"]["processed_count"] += 1
+                        
+                        # 写入基础数据（两个表都写入）
+                        for ws in [ws1, ws2]:
+                            ws.cell(row, 1, product['product_id'])
+                            ws.cell(row, 2, product['product_name'])
+                            ws.cell(row, 3, product.get('category', ''))
+                            ws.cell(row, 4, product.get('avg_price', ''))
+                            ws.cell(row, 5, product.get('total_sale_nd_cnt', ''))
+                            ws.cell(row, 6, product.get('influencers_count', ''))
+                            ws.cell(row, 7, product.get('product_rating', ''))
+                            
+                            # 插入商品原图
+                            _insert_image_to_cell(ws, row, 8, product['cover_url'])
+                        
+                        # 方案一：写入前3个结果
+                        scheme1_results = results[:3]
+                        for i, result in enumerate(scheme1_results, 1):
+                            img_col = 8 + i*2 - 1
+                            link_col = img_col + 1
+                            _insert_image_to_cell(ws1, row, img_col, result['image_url'])
+                            ws1.cell(row, link_col, result['product_url'])
+                            
+                            # 保存到JSON结果
+                            product_result["matches_1"].append({
+                                "image_url": result['image_url'],
+                                "product_url": result['product_url'],
+                                "title": result.get('title', ''),
+                                "price": result.get('price', '')
+                            })
+                        
+                        # 方案二：计算相似度
+                        similar_products = []
+                        for result in results[:10]:
+                            similarity = matcher.compare_images(
+                                product['cover_url'],
+                                result['image_url']
+                            )
+                            if similarity >= matcher.similarity_threshold:
+                                similar_products.append({**result, 'similarity': similarity})
+                                
+                                # 保存到JSON结果
+                                product_result["matches_2"].append({
+                                    "image_url": result['image_url'],
+                                    "product_url": result['product_url'],
+                                    "title": result.get('title', ''),
+                                    "price": result.get('price', ''),
+                                    "similarity": float(similarity)
+                                })
+                        
+                        # 如果有两个以上高相似度商品，写入方案二表格
+                        if len(similar_products) >= 2:
+                            similar_products.sort(key=lambda x: x['similarity'], reverse=True)
+                            for i, result in enumerate(similar_products[:3], 1):
+                                img_col = 8 + i*2 - 1
+                                link_col = img_col + 1
+                                _insert_image_to_cell(ws2, row, img_col, result['image_url'])
+                                ws2.cell(row, link_col, 
+                                    f"相似度: {result['similarity']:.4f}\n"
+                                    f"链接: {result['product_url']}")
+                            valid_products.append(product)
+                            analysis_results["summary"]["scheme2_count"] += 1
+                        
+                        # 添加到分析结果
+                        if product_result["matches_1"] or product_result["matches_2"]:
+                            analysis_results["products"].append(product_result)
+                            if product_result["matches_1"]:
+                                analysis_results["summary"]["scheme1_count"] += 1
+                        
+                    except Exception as e:
+                        print(f"× 搜索商品时出错: {str(e)}")
+                        print("跳过当前商品，继续处理下一个")
+                        continue
+                    
+                except Exception as e:
+                    print(f"× 处理商品时出错: {str(e)}")
+                    continue
+            
+            # 6. 保存Excel文件
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            excel_file = f'top50_analysis_{timestamp}.xlsx'
+            wb.save(excel_file)
+            
+            # 7. 保存JSON结果文件到analysis目录
+            analysis_dir = 'analysis'
+            os.makedirs(analysis_dir, exist_ok=True)
+            json_file = os.path.join(analysis_dir, f'analysis_results_{timestamp}.json')
+            with open(json_file, 'w', encoding='utf-8') as f:
+                json.dump(analysis_results, f, ensure_ascii=False, indent=2)
+            
+            print(f"\n分析完成！")
+            print(f"共处理 {processed_count}/{len(top50_results)} 个商品")
+            print(f"方案一：保存了所有处理成功的商品匹配结果")
+            print(f"方案二：找到 {len(valid_products)} 个有效商品")
+            print(f"Excel报告已生成: {excel_file}")
+            print(f"JSON结果已生成: {json_file}")
+            
+            return excel_file, json_file
+            
+        finally:
+            if matcher:
+                matcher.close_browser()
+            
+    except Exception as e:
+        print(f"\n分析过程出错: {str(e)}")
+        raise
+
+def analyze_1688(excel_file: str) -> None:
+    """对已生成的Excel文件进行1688商品匹配分析"""
+    # 这个函数可以根据需要实现，或者直接返回
+    pass
 
 if __name__ == "__main__":
     main()

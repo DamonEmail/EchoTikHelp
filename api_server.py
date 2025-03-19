@@ -26,15 +26,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 存储任务状态的字典
-task_status = {}
-# 存储任务结果的字典
-task_results = {}
+# 存储所有任务数据的字典
+tasks = {"tasks": {}}
 
 # 添加任务存储相关的常量
 TASKS_FILE = "tasks.json"
 TASKS_DIR = Path("tasks")
+ANALYSIS_DIR = Path("analysis")
+DATA_DIR = Path("data")
+
+# 创建必要的目录
 TASKS_DIR.mkdir(exist_ok=True)
+ANALYSIS_DIR.mkdir(exist_ok=True)
+DATA_DIR.mkdir(exist_ok=True)
 
 def load_tasks():
     """从文件加载任务数据"""
@@ -42,19 +46,18 @@ def load_tasks():
         if os.path.exists(TASKS_FILE):
             with open(TASKS_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                task_status.update(data.get('status', {}))
-                task_results.update(data.get('results', {}))
+                if not isinstance(data, dict) or "tasks" not in data:
+                    return {"tasks": {}}
+                return data
     except Exception as e:
         print(f"加载任务数据失败: {e}")
+    return {"tasks": {}}
 
 def save_tasks():
     """保存任务数据到文件"""
     try:
         with open(TASKS_FILE, 'w', encoding='utf-8') as f:
-            json.dump({
-                'status': task_status,
-                'results': task_results
-            }, f, ensure_ascii=False, indent=2)
+            json.dump(tasks, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"保存任务数据失败: {e}")
 
@@ -87,7 +90,11 @@ async def crawl_data(task_id: str, category_id: Optional[str],
                     keyword: Optional[str], cookie: str, authorization: str):
     """执行爬虫任务"""
     try:
-        task_status[task_id] = {"status": "running", "message": "正在爬取数据..."}
+        # 确保 tasks 字典结构正确
+        if "tasks" not in tasks:
+            tasks["tasks"] = {}
+        
+        tasks["tasks"][task_id] = {"status": "running", "message": "正在爬取数据..."}
         save_tasks()  # 保存任务状态
         
         crawler = EchoTikCrawler()
@@ -112,7 +119,7 @@ async def crawl_data(task_id: str, category_id: Optional[str],
                                 key=lambda x: os.path.getctime(os.path.join(data_dir, x)))
                 file_path = os.path.join(data_dir, latest_file)
                 
-                task_results[task_id] = {
+                tasks["tasks"][task_id] = {
                     "status": "completed",
                     "message": "数据爬取完成",
                     "file_path": file_path,
@@ -120,7 +127,7 @@ async def crawl_data(task_id: str, category_id: Optional[str],
                 }
                 save_tasks()  # 保存任务结果
             except Exception as e:
-                task_results[task_id] = {
+                tasks["tasks"][task_id] = {
                     "status": "failed",
                     "message": f"爬取失败: {str(e)}",
                     "error": str(e)
@@ -131,7 +138,7 @@ async def crawl_data(task_id: str, category_id: Optional[str],
         thread.start()
         
     except Exception as e:
-        task_status[task_id] = {
+        tasks["tasks"][task_id] = {
             "status": "failed",
             "message": f"任务启动失败: {str(e)}"
         }
@@ -146,6 +153,10 @@ async def start_crawl(request: CrawlRequest, background_tasks: BackgroundTasks):
         
     task_id = generate_task_id(request.category_id, request.keyword)
     
+    # 确保 tasks 字典结构正确
+    if "tasks" not in tasks:
+        tasks["tasks"] = {}
+    
     # 启动异步任务
     background_tasks.add_task(crawl_data, task_id, 
                             request.category_id, request.keyword, request.cookie, request.authorization)
@@ -159,25 +170,18 @@ async def start_crawl(request: CrawlRequest, background_tasks: BackgroundTasks):
 @app.get("/api/status/{task_id}", response_model=TaskStatus)
 async def get_task_status(task_id: str):
     """获取任务状态"""
-    if task_id not in task_status and task_id not in task_results:
+    global tasks
+    tasks = load_tasks()
+    
+    if task_id not in tasks["tasks"]:
         raise HTTPException(status_code=404, detail="任务不存在")
     
-    # 如果任务已完成，返回结果
-    if task_id in task_results:
-        result = task_results[task_id]
-        return TaskStatus(
-            task_id=task_id,
-            status=result["status"],
-            message=result["message"],
-            result=result
-        )
-    
-    # 否则返回当前状态
-    status = task_status[task_id]
+    task = tasks["tasks"][task_id]
     return TaskStatus(
         task_id=task_id,
-        status=status["status"],
-        message=status["message"]
+        status=task["status"],
+        message=task["message"],
+        result=task
     )
 
 @app.get("/api/download/{task_id}")
@@ -185,10 +189,10 @@ async def download_file(task_id: str, type: str = 'raw'):
     """下载文件
     type: 'raw' 原始数据文件, 'analysis' 分析结果文件
     """
-    if task_id not in task_results:
+    if task_id not in tasks["tasks"]:
         raise HTTPException(status_code=404, detail="任务不存在")
     
-    result = task_results[task_id]
+    result = tasks["tasks"][task_id]
     
     if type == 'analysis':
         if not result.get("analysis_file") or not os.path.exists(result["analysis_file"]):
@@ -210,88 +214,209 @@ async def download_file(task_id: str, type: str = 'raw'):
 @app.delete("/api/tasks/{task_id}")
 async def delete_task(task_id: str):
     """删除任务及其相关数据"""
-    if task_id not in task_status and task_id not in task_results:
+    global tasks
+    tasks = load_tasks()
+    
+    if task_id not in tasks["tasks"]:
         raise HTTPException(status_code=404, detail="任务不存在")
     
-    # 如果任务有关联文件，删除文件
-    if task_id in task_results:
-        result = task_results[task_id]
+    task = tasks["tasks"][task_id]
+    try:
         # 删除原始数据文件
-        if result.get("file_path") and os.path.exists(result["file_path"]):
+        file_path = task.get("file_path")
+        if file_path and os.path.exists(file_path):
             try:
-                os.remove(result["file_path"])
+                os.remove(file_path)
+                print(f"已删除原始数据文件: {file_path}")
             except Exception as e:
                 print(f"删除原始文件失败: {e}")
         
         # 删除分析结果文件
-        if result.get("analysis_file") and os.path.exists(result["analysis_file"]):
+        analysis_file = task.get("analysis_file")
+        if analysis_file and os.path.exists(analysis_file):
             try:
-                os.remove(result["analysis_file"])
+                os.remove(analysis_file)
+                print(f"已删除分析Excel文件: {analysis_file}")
             except Exception as e:
-                print(f"删除分析文件失败: {e}")
+                print(f"删除分析Excel文件失败: {e}")
+        
+        # 删除分析结果JSON文件
+        analysis_json = task.get("analysis_json")
+        if analysis_json and os.path.exists(analysis_json):
+            try:
+                os.remove(analysis_json)
+                print(f"已删除分析JSON文件: {analysis_json}")
+            except Exception as e:
+                print(f"删除分析JSON文件失败: {e}")
+        
+    except Exception as e:
+        print(f"删除文件时出错: {e}")
     
-    # 从状态字典中删除任务
-    if task_id in task_status:
-        del task_status[task_id]
-    if task_id in task_results:
-        del task_results[task_id]
+    # 从任务字典中删除任务
+    del tasks["tasks"][task_id]
     
     # 保存更新后的任务数据
     save_tasks()
     
-    return {"message": "任务已删除"}
+    return {"message": "任务及相关数据已删除"}
 
 @app.post("/api/analyze")
 async def start_analyze(request: AnalyzeRequest, background_tasks: BackgroundTasks):
     """启动数据分析任务"""
-    if request.task_id not in task_results:
+    print(f"\n=== 收到分析请求 ===")
+    print(f"请求参数: {request}")
+    
+    # 重新加载最新的任务数据
+    global tasks
+    tasks = load_tasks()
+    
+    if request.task_id not in tasks["tasks"]:
+        print(f"任务不存在: {request.task_id}")
+        print(f"当前任务列表: {tasks}")
         raise HTTPException(status_code=404, detail="任务不存在")
     
-    result = task_results[request.task_id]
-    if result["status"] != "completed":
-        raise HTTPException(status_code=400, detail="只能分析已完成的任务")
+    task = tasks["tasks"][request.task_id]
+    print(f"当前任务状态: {task}")
     
-    if not result.get("file_path") or not os.path.exists(result["file_path"]):
-        raise HTTPException(status_code=404, detail="数据文件不存在")
+    # 只要有原始数据文件就可以进行分析
+    if not task.get("file_path") or not os.path.exists(task["file_path"]):
+        raise HTTPException(status_code=404, detail="数据文件不存在，无法进行分析")
+    
+    if task["status"] == "analyzing":
+        raise HTTPException(
+            status_code=400, 
+            detail="任务正在分析中，请等待当前分析完成"
+        )
     
     # 更新任务状态为分析中
-    result["status"] = "analyzing"
-    result["message"] = "正在进行数据分析..."
+    task["status"] = "analyzing"
+    task["message"] = "正在进行数据分析..."
+    # 清除之前的分析结果（如果有）
+    if "analysis_file" in task:
+        del task["analysis_file"]
+    if "analysis_json" in task:
+        del task["analysis_json"]
     save_tasks()
     
     # 启动分析任务
     async def run_analyze():
         try:
             # 执行数据分析
-            output_file = analyze_data(result["file_path"], strategy=request.strategy)
+            output_files = analyze_data(task["file_path"], strategy=request.strategy)
             
-            # 执行1688识图
-            analyze_1688(output_file)
+            if isinstance(output_files, tuple) and len(output_files) == 2:
+                excel_file, json_file = output_files
+            else:
+                excel_file = output_files
+                json_file = None
             
             # 更新任务状态
-            result["status"] = "completed"
-            result["message"] = "分析完成"
-            result["analysis_file"] = output_file
+            task["status"] = "completed"
+            task["message"] = "分析完成"
+            task["analysis_file"] = excel_file
+            if json_file:
+                task["analysis_json"] = json_file
             save_tasks()
             
         except Exception as e:
-            result["status"] = "failed"
-            result["message"] = f"分析失败: {str(e)}"
+            task["status"] = "failed"
+            task["message"] = f"分析失败: {str(e)}"
+            # 清除可能的部分分析结果
+            if "analysis_file" in task:
+                del task["analysis_file"]
+            if "analysis_json" in task:
+                del task["analysis_json"]
             save_tasks()
+            print(f"分析过程出错: {str(e)}")
     
     background_tasks.add_task(run_analyze)
-    
     return {"message": "分析任务已启动"}
+
+@app.get("/api/analysis/{task_id}")
+async def get_analysis_results(task_id: str):
+    """获取分析结果数据"""
+    global tasks
+    tasks = load_tasks()
+    
+    if task_id not in tasks["tasks"]:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    
+    result = tasks["tasks"][task_id]
+    
+    if result.get("status") != "completed":
+        raise HTTPException(status_code=400, detail="分析尚未完成")
+    
+    analysis_json = result.get("analysis_json")
+    if not analysis_json or not os.path.exists(analysis_json):
+        raise HTTPException(status_code=404, detail="分析结果数据不存在")
+    
+    try:
+        with open(analysis_json, 'r', encoding='utf-8') as f:
+            analysis_data = json.load(f)
+        return analysis_data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"读取分析结果失败: {str(e)}")
+
+@app.get("/api/tasks")
+async def get_tasks():
+    """获取所有任务状态"""
+    try:
+        # 先加载最新的任务数据
+        tasks_data = load_tasks()
+        
+        # 确保 tasks_data 和 tasks_data["tasks"] 存在
+        if not tasks_data or not isinstance(tasks_data, dict):
+            tasks_data = {"tasks": {}}
+        if "tasks" not in tasks_data:
+            tasks_data["tasks"] = {}
+        
+        tasks_list = []
+        for task_id, task in tasks_data["tasks"].items():
+            task_info = {
+                "task_id": task_id,
+                "status": task.get("status", "unknown"),
+                "message": task.get("message", ""),
+                "result": {
+                    "file_path": task.get("file_path"),
+                    "file_name": task.get("file_name"),
+                    "analysis_file": task.get("analysis_file"),
+                    "analysis_json": task.get("analysis_json")
+                } if task.get("file_path") else None
+            }
+            tasks_list.append(task_info)
+            
+        print(f"返回任务列表: {tasks_list}")  # 添加调试日志
+        return tasks_list
+        
+    except Exception as e:
+        print(f"获取任务列表失败: {e}")
+        # 出错时也返回空列表，而不是抛出错误
+        return []
 
 def start_server():
     """启动服务器"""
-    load_tasks()  # 加载已有任务数据
+    # 加载已有任务数据到全局变量
+    global tasks
+    tasks = load_tasks()
+    print(f"加载已有任务数据: {tasks}")
+    
     uvicorn.run(
-        app, 
-        host="0.0.0.0",  # 修改为监听所有地址
+        "api_server:app",
+        host="0.0.0.0",
         port=8000,
-        reload=True  # 开发模式下启用热重载
+        reload=True
     )
 
 if __name__ == "__main__":
-    start_server() 
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--reload":
+        # 使用reload模式启动（用于开发）
+        uvicorn.run(
+            "api_server:app",
+            host="0.0.0.0",
+            port=8000,
+            reload=True
+        )
+    else:
+        # 普通模式启动
+        start_server() 

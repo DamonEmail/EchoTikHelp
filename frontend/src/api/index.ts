@@ -10,7 +10,14 @@ export const createTask = async (data: TaskRequest) => {
   return response.data;
 };
 
-export const getTaskStatus = async (taskId: string) => {
-  const response = await api.get<TaskStatus>(`/status/${taskId}`);
-  return response.data;
+export const getTaskStatus = async (taskId?: string) => {
+  try {
+    const response = await api.get<TaskStatus>(
+      taskId ? `/status/${taskId}` : "/api/tasks"
+    );
+    return response.data;
+  } catch (error) {
+    console.error("获取任务状态失败:", error);
+    throw error;
+  }
 };

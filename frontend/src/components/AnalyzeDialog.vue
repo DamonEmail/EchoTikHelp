@@ -10,7 +10,7 @@
     <div class="analyze-content">
       <h3>选择分析策略：</h3>
       <el-radio-group v-model="selectedStrategy" class="strategy-list">
-        <el-radio label="top50" border>
+        <el-radio label="top50" border style="height: auto">
           <div class="strategy-info">
             <h4>TOP50选品策略</h4>
             <p>1. 首先筛选价格范围内的有效商品</p>
@@ -25,6 +25,16 @@
         <el-progress type="circle" :percentage="analyzeProgress" />
         <p class="progress-text">{{ analyzeStatus }}</p>
       </div>
+
+      <!-- 如果已有分析结果，显示提示 -->
+      <el-alert
+        v-if="props.taskId && hasExistingAnalysis"
+        type="warning"
+        :closable="false"
+        style="margin-bottom: 15px"
+      >
+        该任务已有分析结果，重新分析将覆盖现有结果
+      </el-alert>
     </div>
 
     <template #footer>
@@ -34,7 +44,7 @@
           type="primary"
           :loading="analyzing"
           :disabled="!selectedStrategy || analyzing"
-          @click="handleAnalyze"
+          @click="handleConfirm"
         >
           {{ analyzing ? "分析中..." : "开始分析" }}
         </el-button>
@@ -52,6 +62,7 @@ const props = defineProps({
   modelValue: Boolean,
   taskId: String,
   fileName: String,
+  tasks: Array,
 });
 
 const emit = defineEmits(["update:modelValue", "success"]);
@@ -104,65 +115,35 @@ const categoryName = computed(() => {
   return "未知类别";
 });
 
+// 检查是否已有分析结果
+const hasExistingAnalysis = computed(() => {
+  const task = props.tasks?.find((t) => t.task_id === props.taskId);
+  return task?.result?.analysis_file;
+});
+
 const handleClose = () => {
   if (analyzing.value) return;
   emit("update:modelValue", false);
 };
 
-const handleAnalyze = async () => {
-  analyzing.value = true;
-  analyzeProgress.value = 0;
-  analyzeStatus.value = "正在准备分析...";
-
-  // 模拟进度更新
-  progressTimer = setInterval(() => {
-    if (analyzeProgress.value < 90) {
-      analyzeProgress.value += Math.random() * 10;
-      if (analyzeProgress.value < 30) {
-        analyzeStatus.value = "正在分析商品数据...";
-      } else if (analyzeProgress.value < 60) {
-        analyzeStatus.value = "正在计算评分...";
-      } else {
-        analyzeStatus.value = "正在生成分析报告...";
-      }
-    }
-  }, 2000);
-
+const handleConfirm = async () => {
   try {
-    await startAnalyze({
-      task_id: props.taskId,
-      strategy: selectedStrategy.value,
-    });
+    analyzing.value = true;
 
-    analyzeProgress.value = 100;
-    analyzeStatus.value = "分析完成！";
+    await startAnalyze(props.taskId, selectedStrategy.value);
     ElMessage.success("分析任务已启动");
     emit("success");
-
-    // 延迟关闭对话框
-    setTimeout(() => {
-      emit("update:modelValue", false);
-      resetProgress();
-    }, 1000);
+    emit("update:modelValue", false);
   } catch (error) {
     console.error("启动分析失败:", error);
     ElMessage.error(error.response?.data?.detail || "启动分析失败，请稍后重试");
-    resetProgress();
+  } finally {
+    analyzing.value = false;
   }
-};
-
-const resetProgress = () => {
-  if (progressTimer) {
-    clearInterval(progressTimer);
-    progressTimer = null;
-  }
-  analyzing.value = false;
-  analyzeProgress.value = 0;
-  analyzeStatus.value = "";
 };
 
 onUnmounted(() => {
-  resetProgress();
+  // resetProgress();
 });
 </script>
 

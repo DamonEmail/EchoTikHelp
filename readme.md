@@ -1,48 +1,43 @@
-{
-"product_id": "1730761319617628044",
-"product_name": "[4 pek TISU PANDA POPI]...",
-"product_title": "完整标题...",
-"product_title_brief": "简短标题...",
-"product_name_slug": "...",
-"avg_price": "RM10.00",
-"min_price": "RM10.00",
-"max_price": "RM10.00",
-"cover_url": "https://...",
-"category": "家居用品",
-"categories": ["家居用品"],
-"region": {
-"id": "MY",
-"name": "马来西亚",
-"key": "my"
-},
-"commission": "",
-"product_rating": "4.8",
-"lives_sales": "9.8K",
-"videos_sales": "0",
-"influencers_count": "349",
-"videos_count": "781",
-"lives_count": "87",
-"view_count": "16.0M",
-"total_sale_nd_cnt": "39.4K",
-"total_sale_30d_cnt": "39.4K",
-"total_sale_cnt": "102.3K",
-"total_ifl_cnt": "349",
-"total_video_count": "781",
-"total_live_count": "87",
-"total_sale_gmv_nd_amt": "RM342.19K",
-"total_sale_gmv_amt": "RM1.02M",
-"review_count": "15.7K",
-"collect_status": {
-"id": 0,
-"name": "Off",
-"key": "off"
-},
-"group_id": "0",
-"is_delete": 0,
-"is_latest": 1,
-"specs_count": 1,
-"is_s_shop": 0,
-"is_free_shipping": 0,
-"off": 0,
-"is_mall_recommended": 0
-}
+# EchoTik 数据分析工具
+
+## 项目简介
+
+EchoTik 数据分析工具是一个用于抓取、分析和匹配电商产品数据的应用程序。它可以帮助用户快速找到相似商品，分析价格和销量数据，提供商品匹配建议。
+
+## 环境要求
+
+以下软件需要用户手动安装：
+
+- **Python 3.8+** - [下载地址](https://www.python.org/downloads/)
+- **Node.js 16+** - [下载地址](https://nodejs.org/en/download/)
+- **Chrome 浏览器** - [下载地址](https://www.google.com/chrome/)
+
+其他依赖项（如 Python 包和 Node.js 模块）将由启动脚本自动检查并安装。
+
+## 快速开始
+
+### Windows 用户
+
+1. 克隆或下载本项目到本地
+2. 双击运行 `start.bat` 文件
+3. 启动脚本会自动：
+   - 检查并创建必要的目录
+   - 检查 Python 和 Node.js 环境
+   - 安装所需的依赖项（如果缺少）
+   - 启动后端和前端服务
+
+## 访问应用
+
+启动成功后，可以通过浏览器访问：
+
+- 前端界面：http://localhost:5173
+
+## 使用说明
+
+1. 在首页可以创建新任务或查看已有任务
+2. 创建任务时需要提供 Cookie 和 Authorization 信息
+3. 选择商品类别或输入关键词进行数据抓取
+4. 抓取完成后，可以对数据进行分析
+5. 分析结果会显示匹配的商品信息
+
+## 目录结构
