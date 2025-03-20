@@ -225,7 +225,7 @@ const handleDownload = (task, type = "raw") => {
     type === "analysis" ? task.result?.analysis_file : task.result?.file_path;
   if (filePath) {
     window.open(
-      `http://localhost:8000/api/download/${task.task_id}?type=${type}`
+      `http://localhost:9527/api/download/${task.task_id}?type=${type}`
     );
   }
 };

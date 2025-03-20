@@ -84,7 +84,7 @@ def main():
         
         print("\n=== 服务已启动 ===")
         print("前端地址: http://localhost:5173")
-        print("后端地址: http://localhost:8000")
+        print("后端地址: http://localhost:9527")
         print("\n按 Ctrl+C 停止服务...")
         
         # 等待用户中断

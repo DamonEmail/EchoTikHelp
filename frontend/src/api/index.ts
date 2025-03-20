@@ -2,7 +2,7 @@ import axios from "axios";
 import type { TaskRequest, TaskStatus } from "../types/task";
 
 const api = axios.create({
-  baseURL: "http://localhost:8000/api",
+  baseURL: "http://localhost:9527/api",
 });
 
 export const createTask = async (data: TaskRequest) => {

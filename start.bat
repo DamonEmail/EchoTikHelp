@@ -17,13 +17,15 @@ if %errorlevel% neq 0 (
 
 :: 检查并安装 Python 依赖
 echo 检查 Python 依赖...
-python -c "import fastapi, uvicorn, selenium, cv2, numpy, openpyxl, requests, aiohttp, pandas, PIL, dotenv" >nul 2>&1
+python -c "import fastapi, uvicorn, selenium, cv2, numpy, openpyxl, requests, aiohttp, pandas, PIL, dotenv, bs4, lxml" >nul 2>&1
 if %errorlevel% neq 0 (
     echo 正在安装 Python 依赖...
     pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
     if %errorlevel% neq 0 (
         echo [警告] 依赖安装可能不完整，程序可能无法正常运行
         echo 请尝试手动执行: pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
+        echo 或者单独安装缺失的包: pip install -i https://pypi.tuna.tsinghua.edu.cn/simple 包名
+        pause
     ) else (
         echo Python 依赖安装完成
     )
@@ -63,10 +65,31 @@ cd ..
 :: 启动后端服务
 echo.
 echo 正在启动后端服务...
-start cmd /k "chcp 65001 >nul && echo 正在启动后端服务... && python api_server.py"
+:: 检查端口 8000 是否被占用
+netstat -ano | find ":8000" >nul
+if not errorlevel 1 (
+    echo [警告] 端口 8000 已被占用，请关闭占用该端口的程序后重试
+    echo 您可以使用以下命令查看占用端口的程序：
+    echo netstat -ano ^| find ":8000"
+    pause
+    exit /b 1
+)
+
+:: 以管理员权限启动后端服务
+powershell -Command "Start-Process cmd -ArgumentList '/k chcp 65001 >nul && echo 正在启动后端服务... && python api_server.py' -Verb RunAs"
 
 :: 启动前端服务
 echo 正在启动前端服务...
+:: 检查端口 5173 是否被占用
+netstat -ano | find ":5173" >nul
+if not errorlevel 1 (
+    echo [警告] 端口 5173 已被占用，请关闭占用该端口的程序后重试
+    echo 您可以使用以下命令查看占用端口的程序：
+    echo netstat -ano ^| find ":5173"
+    pause
+    exit /b 1
+)
+
 cd frontend
 start cmd /k "chcp 65001 >nul && echo 正在启动前端服务... && npm run dev && timeout /t 3 >nul"
 
@@ -79,7 +102,7 @@ start http://localhost:5173
 
 echo.
 echo 服务启动中，请稍候...
-echo 后端服务地址: http://localhost:8000
+echo 后端服务地址: http://localhost:9527
 echo 前端服务地址: http://localhost:5173
 echo.
 echo 提示: 
