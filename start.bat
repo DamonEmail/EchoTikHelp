@@ -65,12 +65,12 @@ cd ..
 :: 启动后端服务
 echo.
 echo 正在启动后端服务...
-:: 检查端口 8000 是否被占用
-netstat -ano | find ":8000" >nul
+:: 检查端口 9527 是否被占用
+netstat -ano | find ":9527" >nul
 if not errorlevel 1 (
-    echo [警告] 端口 8000 已被占用，请关闭占用该端口的程序后重试
+    echo [警告] 端口 9527 已被占用，请关闭占用该端口的程序后重试
     echo 您可以使用以下命令查看占用端口的程序：
-    echo netstat -ano ^| find ":8000"
+    echo netstat -ano ^| find ":9527"
     pause
     exit /b 1
 )
