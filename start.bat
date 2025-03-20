@@ -65,6 +65,9 @@ cd ..
 :: 启动后端服务
 echo.
 echo 正在启动后端服务...
+:: 保存当前目录路径
+set CURRENT_DIR=%CD%
+
 :: 检查端口 9527 是否被占用
 netstat -ano | find ":9527" >nul
 if not errorlevel 1 (
@@ -75,8 +78,12 @@ if not errorlevel 1 (
     exit /b 1
 )
 
-:: 以管理员权限启动后端服务
-powershell -Command "Start-Process cmd -ArgumentList '/k chcp 65001 >nul && echo 正在启动后端服务... && python api_server.py' -Verb RunAs"
+:: 以管理员权限启动后端服务，同时保持在当前目录
+powershell -Command "Start-Process cmd -ArgumentList '/k cd /d %CURRENT_DIR% && chcp 65001 >nul && echo 正在启动后端服务... && python api_server.py' -Verb RunAs"
+if %errorlevel% neq 0 (
+    echo [警告] 管理员权限启动失败，尝试普通方式启动...
+    start cmd /k "cd /d %CURRENT_DIR% && chcp 65001 >nul && echo 正在启动后端服务... && python api_server.py"
+)
 
 :: 启动前端服务
 echo 正在启动前端服务...
