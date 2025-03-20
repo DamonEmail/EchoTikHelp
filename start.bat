@@ -17,10 +17,10 @@ if %errorlevel% neq 0 (
 
 :: 检查并安装 Python 依赖
 echo 检查 Python 依赖...
-python -c "import fastapi, uvicorn, selenium, cv2, numpy, openpyxl, requests, aiohttp" >nul 2>&1
+python -c "import fastapi, uvicorn, selenium, cv2, numpy, openpyxl, requests, aiohttp, pandas" >nul 2>&1
 if %errorlevel% neq 0 (
     echo 正在安装 Python 依赖...
-    pip install -i https://pypi.tuna.tsinghua.edu.cn/simple fastapi uvicorn selenium opencv-python numpy openpyxl requests aiohttp python-multipart pydantic
+    pip install -i https://pypi.tuna.tsinghua.edu.cn/simple fastapi uvicorn selenium opencv-python numpy openpyxl requests aiohttp python-multipart pydantic pandas
     if %errorlevel% neq 0 (
         echo [警告] 依赖安装可能不完整，程序可能无法正常运行
     ) else (
@@ -29,6 +29,9 @@ if %errorlevel% neq 0 (
 ) else (
     echo Python 依赖检查通过
 )
+
+:: 设置控制台编码为 UTF-8
+chcp 65001 >nul
 
 :: 检查 Node.js 环境
 echo 检查 Node.js 环境...
@@ -59,12 +62,12 @@ cd ..
 :: 启动后端服务
 echo.
 echo 正在启动后端服务...
-start cmd /k "echo 正在启动后端服务... && python api_server.py"
+start cmd /k "chcp 65001 >nul && echo 正在启动后端服务... && python api_server.py"
 
 :: 启动前端服务
 echo 正在启动前端服务...
 cd frontend
-start cmd /k "echo 正在启动前端服务... && npm run dev"
+start cmd /k "chcp 65001 >nul && echo 正在启动前端服务... && npm run dev"
 
 echo.
 echo 服务启动中，请稍候...

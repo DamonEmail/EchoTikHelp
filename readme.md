@@ -41,3 +41,23 @@ EchoTik 数据分析工具是一个用于抓取、分析和匹配电商产品数
 5. 分析结果会显示匹配的商品信息
 
 ## 目录结构
+
+## 常见问题
+
+1. **启动失败**
+
+   - 确保已安装 Python 3.8+ 和 Node.js 16+
+   - 确保 Chrome 浏览器已安装
+   - 检查端口 8000 和 5173 是否被占用
+
+2. **中文乱码**
+
+   - 如果看到乱码，请尝试在命令行中执行：`chcp 65001`
+   - 或者重新打开命令行窗口
+
+3. **依赖安装失败**
+   - 如果自动安装失败，可以手动执行以下命令：
+     ```
+     pip install -i https://pypi.tuna.tsinghua.edu.cn/simple fastapi uvicorn selenium opencv-python numpy openpyxl requests aiohttp python-multipart pydantic pandas
+     cd frontend && npm install
+     ```
