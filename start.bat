@@ -17,12 +17,13 @@ if %errorlevel% neq 0 (
 
 :: 检查并安装 Python 依赖
 echo 检查 Python 依赖...
-python -c "import fastapi, uvicorn, selenium, cv2, numpy, openpyxl, requests, aiohttp, pandas" >nul 2>&1
+python -c "import fastapi, uvicorn, selenium, cv2, numpy, openpyxl, requests, aiohttp, pandas, PIL, dotenv" >nul 2>&1
 if %errorlevel% neq 0 (
     echo 正在安装 Python 依赖...
-    pip install -i https://pypi.tuna.tsinghua.edu.cn/simple fastapi uvicorn selenium opencv-python numpy openpyxl requests aiohttp python-multipart pydantic pandas
+    pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
     if %errorlevel% neq 0 (
         echo [警告] 依赖安装可能不完整，程序可能无法正常运行
+        echo 请尝试手动执行: pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
     ) else (
         echo Python 依赖安装完成
     )

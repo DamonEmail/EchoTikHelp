@@ -56,8 +56,14 @@ EchoTik 数据分析工具是一个用于抓取、分析和匹配电商产品数
    - 或者重新打开命令行窗口
 
 3. **依赖安装失败**
+
    - 如果自动安装失败，可以手动执行以下命令：
      ```
-     pip install -i https://pypi.tuna.tsinghua.edu.cn/simple fastapi uvicorn selenium opencv-python numpy openpyxl requests aiohttp python-multipart pydantic pandas
+     pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
      cd frontend && npm install
      ```
+
+4. **运行时缺少依赖**
+   - 如果运行时提示缺少某个模块，请检查 requirements.txt 文件
+   - 可以手动安装缺失的依赖：`pip install -i https://pypi.tuna.tsinghua.edu.cn/simple 模块名`
+   - 或者重新安装所有依赖：`pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt`
