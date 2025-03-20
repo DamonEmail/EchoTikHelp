@@ -68,11 +68,20 @@ start cmd /k "chcp 65001 >nul && echo 正在启动后端服务... && python api_
 :: 启动前端服务
 echo 正在启动前端服务...
 cd frontend
-start cmd /k "chcp 65001 >nul && echo 正在启动前端服务... && npm run dev"
+start cmd /k "chcp 65001 >nul && echo 正在启动前端服务... && npm run dev && timeout /t 3 >nul"
+
+:: 等待几秒钟确保服务启动
+timeout /t 5 >nul
+
+:: 打开默认浏览器访问前端页面
+echo 正在打开浏览器...
+start http://localhost:5173
 
 echo.
 echo 服务启动中，请稍候...
 echo 后端服务地址: http://localhost:8000
 echo 前端服务地址: http://localhost:5173
 echo.
-echo 提示: 如需停止服务，请关闭对应的命令行窗口 
+echo 提示: 
+echo - 如需停止服务，请关闭对应的命令行窗口
+echo - 浏览器将自动打开，如果没有自动打开，请手动访问 http://localhost:5173 
