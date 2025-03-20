@@ -11,6 +11,11 @@ EchoTik 数据分析工具是一个用于抓取、分析和匹配电商产品数
 - **Python 3.8+** - [下载地址](https://www.python.org/downloads/)
 - **Node.js 16+** - [下载地址](https://nodejs.org/en/download/)
 - **Chrome 浏览器** - [下载地址](https://www.google.com/chrome/)
+- **ChromeDriver** - [下载地址](https://chromedriver.chromium.org/downloads)
+  - 下载与您的 Chrome 浏览器版本匹配的 ChromeDriver
+  - 将 chromedriver.exe 放在以下位置之一：
+    1. 项目根目录（推荐）
+    2. F:\chromedriver-win64\chromedriver.exe
 
 其他依赖项（如 Python 包和 Node.js 模块）将由启动脚本自动检查并安装。
 

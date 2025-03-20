@@ -33,39 +33,8 @@ if %errorlevel% neq 0 (
     echo Python 依赖检查通过
 )
 
-:: 检查并下载 ChromeDriver
-echo 检查 ChromeDriver...
-:: 先设置编码为 UTF-8
+:: 设置控制台编码为 UTF-8
 chcp 65001 >nul
-
-python -c "from selenium import webdriver; from selenium.webdriver.chrome.service import Service as ChromeService; from webdriver_manager.chrome import ChromeDriverManager; from selenium.webdriver.chrome.options import Options; options = Options(); options.add_argument('--headless'); webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)" >nul 2>&1
-if %errorlevel% neq 0 (
-    echo 正在安装 ChromeDriver...
-    python -c "from webdriver_manager.chrome import ChromeDriverManager; print('ChromeDriver 路径:', ChromeDriverManager().install())"
-    if %errorlevel% neq 0 (
-        echo [警告] ChromeDriver 安装失败，分析功能可能无法正常工作
-        echo 请确保已安装 Chrome 浏览器，并且网络连接正常
-        :: 尝试直接设置 ChromeDriver 路径
-        for /f "tokens=*" %%i in ('python -c "from webdriver_manager.chrome import ChromeDriverManager; print(ChromeDriverManager().install())"') do set CHROME_DRIVER=%%i
-        if exist "%CHROME_DRIVER%" (
-            echo ChromeDriver 已找到：%CHROME_DRIVER%
-            set PATH=%PATH%;%CHROME_DRIVER%\..\
-        ) else (
-            echo 未能找到 ChromeDriver，请手动下载并安装
-        )
-        pause
-    ) else (
-        echo ChromeDriver 安装完成
-        :: 获取并设置 ChromeDriver 路径
-        for /f "tokens=*" %%i in ('python -c "from webdriver_manager.chrome import ChromeDriverManager; print(ChromeDriverManager().install())"') do set CHROME_DRIVER=%%i
-        set PATH=%PATH%;%CHROME_DRIVER%\..\
-    )
-) else (
-    echo ChromeDriver 检查通过
-    :: 获取并设置 ChromeDriver 路径
-    for /f "tokens=*" %%i in ('python -c "from webdriver_manager.chrome import ChromeDriverManager; print(ChromeDriverManager().install())"') do set CHROME_DRIVER=%%i
-    set PATH=%PATH%;%CHROME_DRIVER%\..\
-)
 
 :: 检查 Node.js 环境
 echo 检查 Node.js 环境...

@@ -102,35 +102,33 @@ class Alibaba1688Searcher:
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
             
-            # 尝试使用本地 ChromeDriver
-            local_driver = os.path.join(os.path.dirname(__file__), "chromedriver.exe")
-            if os.path.exists(local_driver):
-                service = Service(local_driver)
-            else:
-                # 使用 webdriver_manager
-                service = Service(ChromeDriverManager().install())
+            # 按优先级尝试不同的 ChromeDriver 路径
+            driver_paths = [
+                os.path.join(os.path.dirname(__file__), "chromedriver.exe"),  # 项目目录
+                r"F:\chromedriver-win64\chromedriver.exe",  # 备用地址
+            ]
             
-            # 创建 Chrome 浏览器实例
-            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            driver = None
+            for path in driver_paths:
+                if os.path.exists(path):
+                    print(f"使用 ChromeDriver: {path}")
+                    service = Service(path)
+                    try:
+                        self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                        break
+                    except Exception as e:
+                        print(f"尝试使用 {path} 失败: {e}")
+                        continue
+            
+            if not self.driver:
+                raise Exception("未找到可用的 ChromeDriver，请确保已下载并放置在正确位置")
             
             # 初始化token和请求头
             self._init_token_and_headers()
             
         except Exception as e:
             print(f"ChromeDriver 初始化失败: {e}")
-            # 尝试使用备用方法
-            try:
-                print("尝试使用备用方法初始化 ChromeDriver...")
-                chrome_options = Options()
-                chrome_options.add_argument("--headless")
-                self.driver = webdriver.Chrome(options=chrome_options)
-                
-                # 初始化token和请求头
-                self._init_token_and_headers()
-                
-            except Exception as e2:
-                print(f"备用方法也失败: {e2}")
-                raise Exception(f"无法初始化 ChromeDriver: {e}\n备用方法: {e2}")
+            raise
 
     def _init_token_and_headers(self):
         """初始化token和请求头（只需执行一次）"""
