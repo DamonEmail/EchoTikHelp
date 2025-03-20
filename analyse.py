@@ -98,12 +98,17 @@ class Alibaba1688Searcher:
         try:
             # 设置 Chrome 选项
             chrome_options = Options()
-            chrome_options.add_argument("--headless")  # 无头模式，不显示浏览器窗口
+            chrome_options.add_argument("--headless")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
             
-            # 使用 webdriver_manager 自动下载和管理 ChromeDriver
-            service = Service(ChromeDriverManager().install())
+            # 尝试使用本地 ChromeDriver
+            local_driver = os.path.join(os.path.dirname(__file__), "chromedriver.exe")
+            if os.path.exists(local_driver):
+                service = Service(local_driver)
+            else:
+                # 使用 webdriver_manager
+                service = Service(ChromeDriverManager().install())
             
             # 创建 Chrome 浏览器实例
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
