@@ -33,6 +33,29 @@ if %errorlevel% neq 0 (
     echo Python 依赖检查通过
 )
 
+:: 检查并下载 ChromeDriver
+echo 检查 ChromeDriver...
+python -c "from selenium import webdriver; from selenium.webdriver.chrome.service import Service as ChromeService; from webdriver_manager.chrome import ChromeDriverManager; from selenium.webdriver.chrome.options import Options; options = Options(); options.add_argument('--headless'); webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=options)" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo 正在安装 ChromeDriver...
+    python -c "from webdriver_manager.chrome import ChromeDriverManager; print('ChromeDriver 路径:', ChromeDriverManager().install())"
+    if %errorlevel% neq 0 (
+        echo [警告] ChromeDriver 安装失败，分析功能可能无法正常工作
+        echo 请确保已安装 Chrome 浏览器，并且网络连接正常
+        echo 尝试设置 PYTHONPATH 环境变量...
+        set PYTHONPATH=%PYTHONPATH%;%USERPROFILE%\.wdm\drivers\chromedriver
+        pause
+    ) else (
+        echo ChromeDriver 安装完成
+        echo 设置 PATH 环境变量...
+        set PATH=%PATH%;%USERPROFILE%\.wdm\drivers\chromedriver
+    )
+) else (
+    echo ChromeDriver 检查通过
+    echo 设置 PATH 环境变量...
+    set PATH=%PATH%;%USERPROFILE%\.wdm\drivers\chromedriver
+)
+
 :: 设置控制台编码为 UTF-8
 chcp 65001 >nul
 

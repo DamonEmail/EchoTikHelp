@@ -80,6 +80,17 @@ EchoTik 数据分析工具是一个用于抓取、分析和匹配电商产品数
      ```
 
 4. **运行时缺少依赖**
+
    - 如果运行时提示缺少某个模块，请检查 requirements.txt 文件
    - 可以手动安装缺失的依赖：`pip install -i https://pypi.tuna.tsinghua.edu.cn/simple 模块名`
    - 或者重新安装所有依赖：`pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt`
+
+5. **ChromeDriver 错误**
+   - 如果分析时出现 "Unable to obtain driver for chrome" 错误：
+     1. 确保已安装 Chrome 浏览器
+     2. 手动安装 ChromeDriver：
+     ```
+     pip install webdriver-manager
+     python -c "from webdriver_manager.chrome import ChromeDriverManager; ChromeDriverManager().install()"
+     ```
+     3. 如果仍然失败，可以从 https://chromedriver.chromium.org/downloads 下载与您的 Chrome 版本匹配的 ChromeDriver，并将其放在 PATH 环境变量中的目录下

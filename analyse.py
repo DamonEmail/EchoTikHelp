@@ -23,6 +23,9 @@ import time
 from bs4 import BeautifulSoup
 import hashlib
 from urllib.parse import urlencode
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 
 class ImageMatcher:
     def __init__(self):
@@ -92,15 +95,37 @@ class Alibaba1688Searcher:
 
     def init_browser(self):
         """初始化浏览器和必要的参数"""
-        # 初始化浏览器
-        options = webdriver.ChromeOptions()
-        options.add_argument('--headless')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--no-sandbox')
-        self.driver = webdriver.Chrome(options=options)
-        
-        # 初始化token和请求头
-        self._init_token_and_headers()
+        try:
+            # 设置 Chrome 选项
+            chrome_options = Options()
+            chrome_options.add_argument("--headless")  # 无头模式，不显示浏览器窗口
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            
+            # 使用 webdriver_manager 自动下载和管理 ChromeDriver
+            service = Service(ChromeDriverManager().install())
+            
+            # 创建 Chrome 浏览器实例
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            
+            # 初始化token和请求头
+            self._init_token_and_headers()
+            
+        except Exception as e:
+            print(f"ChromeDriver 初始化失败: {e}")
+            # 尝试使用备用方法
+            try:
+                print("尝试使用备用方法初始化 ChromeDriver...")
+                chrome_options = Options()
+                chrome_options.add_argument("--headless")
+                self.driver = webdriver.Chrome(options=chrome_options)
+                
+                # 初始化token和请求头
+                self._init_token_and_headers()
+                
+            except Exception as e2:
+                print(f"备用方法也失败: {e2}")
+                raise Exception(f"无法初始化 ChromeDriver: {e}\n备用方法: {e2}")
 
     def _init_token_and_headers(self):
         """初始化token和请求头（只需执行一次）"""
